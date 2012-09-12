@@ -6,7 +6,12 @@ module Codec.Xlsx.Parser(
   xlsx,
   sheet,
   cellSource,
-  sheetRowSource
+  sheetRowSource,
+  sheetDataSource,
+  sheetSource,
+  onlyText, convertToText,
+
+  Row, MapRow
   ) where
 
 import           Control.Applicative
@@ -38,6 +43,7 @@ import qualified Text.XML.Stream.Parse as Xml
 
 import           Codec.Xlsx
 
+type Row = Map.Map (Maybe CellValue) (Maybe CellValue)
 
 type MapRow = Map.Map Text Text
 
@@ -141,10 +147,39 @@ sheetRowSource x sheetN
   $= reverseRows
   $= mkMapRows
 
+-- | Get all rows from specified worksheet without converting to text
+sheetDataSource :: MonadThrow m => Xlsx -> Int -> Source m Row
+sheetDataSource x sheetN
+  =  getSheetCells x sheetN
+  $= groupRows
+  $= reverseRows
+  $= mkDataRows
+
+-- | Get all rows from specified worksheet with convert to text
+sheetSource :: MonadThrow m => Xlsx -> Int -> (Maybe CellValue -> Text) -> (Maybe CellValue -> Text) -> Source m MapRow
+sheetSource x sheetN convertHeader convertData = sheetDataSource x sheetN $= CL.map convertMap where
+  convertMap = Map.map convertData . Map.mapKeys convertHeader
+
+-- | Get only text
+onlyText :: Maybe CellValue -> Text
+onlyText Nothing = ""
+onlyText (Just (CellText txt)) = txt
+onlyText _ = ""
+
+-- | Try convert CellValue to text with 'show'
+convertToText :: Maybe CellValue -> Text
+convertToText Nothing = ""
+convertToText (Just (CellText txt)) = txt
+convertToText (Just (CellDouble d)) = T.pack $ show d
+convertToText (Just (CellLocalTime tm)) = T.pack $ show tm
+
 -- | Make 'Conduit' from 'mkMapRowsSink'.
 mkMapRows :: Monad m => Conduit [Cell] m MapRow
 mkMapRows = sequence mkMapRowsSink =$= CL.concatMap id
 
+-- | Make 'Conduit' from 'mkCellRowsSink'
+mkDataRows :: Monad m => Conduit [Cell] m Row
+mkDataRows = sequence mkDataRowsSink =$= CL.concatMap id
 
 -- | Make 'MapRow' from list of 'Cell's.
 mkMapRowsSink :: Monad m => Sink [Cell] m [MapRow]
@@ -168,6 +203,28 @@ mkMapRowsSink = do
     txt = fromMaybe "" . cv
     cv Cell{cellData=CellData{cdValue=Just(CellText t)}} = Just t
     cv _ = Nothing
+
+-- | Make 'Row' from list of 'Cell's
+mkDataRowsSink :: Monad m => Sink [Cell] m [Row]
+mkDataRowsSink = do
+  header <- fromMaybe [] <$> CL.head
+  rows <- CL.consume
+
+  return $ map (mkRow header) rows
+
+  where
+    mkRow header row = Map.fromList $ zipCells header row
+
+    zipCells :: [Cell] -> [Cell] -> [(Maybe CellValue, Maybe CellValue)]
+    zipCells [] _ = []
+    zipCells header [] = map (\h -> (getData h, Nothing)) header
+    zipCells header@(h:hs) row@(r:rs) =
+      case comparing (fst . cellIx) h r of
+        LT -> (getData h, Nothing) : zipCells hs row
+        EQ -> (getData h, getData r) : zipCells hs rs
+        GT -> (Nothing, getData r) : zipCells header rs
+
+    getData Cell{cellData=CellData{cdValue=cd}} = cd
 
 reverseRows :: Monad m => Conduit [a] m [a]
 reverseRows = CL.map reverse

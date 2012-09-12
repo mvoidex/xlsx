@@ -64,7 +64,7 @@ data Worksheet = Worksheet { wsName       :: Text                   -- ^ workshe
                deriving Show
 
 data CellValue = CellText Text | CellDouble Double | CellLocalTime LocalTime
-               deriving Show
+               deriving (Show, Eq, Ord)
 
 
 data Cell = Cell { cellIx   :: (Text, Int)
