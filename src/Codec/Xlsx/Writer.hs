@@ -67,7 +67,7 @@ coreXml created creator =
   renderLBS def $ Document (Prologue [] Nothing []) root []
   where
     date = T.pack $ formatCalendarTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" created
-    nsAttrs = [("xmlns:dcterms", "http://purl.org/dc/terms/")]
+    nsAttrs = M.singleton "xmlns:dcterms" "http://purl.org/dc/terms/"
     root = Element (nm "http://schemas.openxmlformats.org/package/2006/metadata/core-properties" "coreProperties") nsAttrs
            [nEl (nm "http://purl.org/dc/terms/" "created")
                                   [(nm "http://www.w3.org/2001/XMLSchema-instance" "type", "dcterms:W3CDTF")] [NodeContent date],
@@ -129,11 +129,11 @@ sheetXml cws rh d = renderLBS def $ Document (Prologue [] Nothing []) root []
     numCols = zip [int2col n | n <- [1..]]
     cType = xlsxCellType
     root = addNS "http://schemas.openxmlformats.org/spreadsheetml/2006/main" $
-           Element "worksheet" []
+           Element "worksheet" M.empty
            [nEl "cols" [] $  map cwEl cws,
             nEl "sheetData" [] $ map rowEl rows]
     cwEl cw = NodeElement $! Element "col"
-              [("min", txti $ cwMin cw), ("max", txti $ cwMax cw), ("width", txtd $ cwWidth cw)] []
+              (M.fromList [("min", txti $ cwMin cw), ("max", txti $ cwMax cw), ("width", txtd $ cwWidth cw)]) []
     rowEl (r, cells) = nEl "row"
                        (ht ++ [("r", txti r), ("hidden", "false"), ("outlineLevel", "0"),
                                ("collapsed", "false"), ("customFormat", "false"),
@@ -153,7 +153,7 @@ bookXml :: [Worksheet] -> L.ByteString
 bookXml wss = renderLBS def $ Document (Prologue [] Nothing []) root []
   where
     numNames = [(txti i, wsName ws) | (i, ws) <- zip [1..] wss]
-    root = addNS "http://schemas.openxmlformats.org/spreadsheetml/2006/main" $ Element "workbook" []
+    root = addNS "http://schemas.openxmlformats.org/spreadsheetml/2006/main" $ Element "workbook" M.empty
            [nEl "sheets" [] $
             map (\(n, name) -> nEl "sheet"
                                [("name", name), ("sheetId", n), ("state", "visible"),
@@ -168,14 +168,14 @@ ssXml :: [Text] -> L.ByteString
 ssXml ss =
   renderLBS def $ Document (Prologue [] Nothing []) root []
   where
-    root = addNS "http://schemas.openxmlformats.org/spreadsheetml/2006/main" $ Element "sst" [] $
+    root = addNS "http://schemas.openxmlformats.org/spreadsheetml/2006/main" $ Element "sst" M.empty $
            map (\s -> nEl "si" [] [nEl "t" [] [NodeContent s]]) ss
 
 bookRelXml :: Int -> L.ByteString
 bookRelXml n = renderLBS def $ Document (Prologue [] Nothing []) root []
   where
     root = addNS "http://schemas.openxmlformats.org/package/2006/relationships" $
-           Element "Relationships" [] $
+           Element "Relationships" M.empty $
            map (\sn -> relEl sn (T.concat ["worksheets/sheet", txti sn, ".xml"]) "worksheet") [1..n]
            ++
            [relEl (n + 1) "styles.xml" "styles", relEl (n + 2) "sharedStrings.xml" "sharedStrings"]
@@ -192,7 +192,7 @@ contentTypesXml :: [FileData] -> L.ByteString
 contentTypesXml fds = renderLBS def $ Document (Prologue [] Nothing []) root []
   where
     root = addNS "http://schemas.openxmlformats.org/package/2006/content-types" $
-           Element "Types" [] $
+           Element "Types" M.empty $
            map (\fd -> nEl "Override" [("PartName", T.concat ["/", fdName fd]),
                                        ("ContentType", fdContentType fd)] []) fds
 
@@ -209,7 +209,7 @@ addNS namespace (Element (Name ln _ _) as ns) = Element (Name ln (Just namespace
     addNS' n = n
 
 nEl :: Name -> [(Name, Text)] -> [Node] -> Node
-nEl name attrs nodes = NodeElement $ Element name attrs nodes
+nEl name attrs nodes = NodeElement $ Element name (M.fromList attrs) nodes
 
 txti :: Int -> Text
 txti = toStrict . toLazyText . decimal
