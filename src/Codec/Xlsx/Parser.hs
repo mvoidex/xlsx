@@ -35,6 +35,7 @@ import           Data.ByteString.Lazy.Char8()
 import qualified Codec.Archive.Zip as Zip
 import           Data.Conduit
 import qualified Data.Conduit.List as CL
+import           Data.Conduit.Util hiding (zip)
 import           Data.XML.Types
 import           System.FilePath
 import           Text.XML as X
@@ -175,14 +176,14 @@ convertToText (Just (CellLocalTime tm)) = T.pack $ show tm
 
 -- | Make 'Conduit' from 'mkMapRowsSink'.
 mkMapRows :: Monad m => Conduit [Cell] m MapRow
-mkMapRows = sequence mkMapRowsSink =$= CL.concatMap id
+mkMapRows = CL.sequence mkMapRowsSink =$= CL.concatMap id
 
 -- | Make 'Conduit' from 'mkCellRowsSink'
 mkDataRows :: Monad m => Conduit [Cell] m Row
-mkDataRows = sequence mkDataRowsSink =$= CL.concatMap id
+mkDataRows = CL.sequence mkDataRowsSink =$= CL.concatMap id
 
 -- | Make 'MapRow' from list of 'Cell's.
-mkMapRowsSink :: Monad m => Sink [Cell] m [MapRow]
+mkMapRowsSink :: Monad m => GSink [Cell] m [MapRow]
 mkMapRowsSink = do
     header <- fromMaybe [] <$> CL.head
     rows   <- CL.consume
@@ -205,7 +206,7 @@ mkMapRowsSink = do
     cv _ = Nothing
 
 -- | Make 'Row' from list of 'Cell's
-mkDataRowsSink :: Monad m => Sink [Cell] m [Row]
+mkDataRowsSink :: Monad m => GSink [Cell] m [Row]
 mkDataRowsSink = do
   header <- fromMaybe [] <$> CL.head
   rows <- CL.consume
