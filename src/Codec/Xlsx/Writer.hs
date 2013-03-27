@@ -70,9 +70,9 @@ coreXml created creator =
     nsAttrs = M.singleton "xmlns:dcterms" "http://purl.org/dc/terms/"
     root = Element (nm "http://schemas.openxmlformats.org/package/2006/metadata/core-properties" "coreProperties") nsAttrs
            [nEl (nm "http://purl.org/dc/terms/" "created")
-                                  [(nm "http://www.w3.org/2001/XMLSchema-instance" "type", "dcterms:W3CDTF")] [NodeContent date],
-            nEl (nm "http://purl.org/dc/elements/1.1/" "creator") [] [NodeContent creator],
-            nEl (nm "http://schemas.openxmlformats.org/package/2006/metadata/core-properties" "version") [] [NodeContent "0"]]
+                                  (M.singleton (nm "http://www.w3.org/2001/XMLSchema-instance" "type") "dcterms:W3CDTF") [NodeContent date],
+            nEl (nm "http://purl.org/dc/elements/1.1/" "creator") M.empty [NodeContent creator],
+            nEl (nm "http://schemas.openxmlformats.org/package/2006/metadata/core-properties" "version") M.empty [NodeContent "0"]]
 
 appXml :: L.ByteString
 appXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
@@ -130,21 +130,21 @@ sheetXml cws rh d = renderLBS def $ Document (Prologue [] Nothing []) root []
     cType = xlsxCellType
     root = addNS "http://schemas.openxmlformats.org/spreadsheetml/2006/main" $
            Element "worksheet" M.empty
-           [nEl "cols" [] $  map cwEl cws,
-            nEl "sheetData" [] $ map rowEl rows]
+           [nEl "cols" M.empty $  map cwEl cws,
+            nEl "sheetData" M.empty $ map rowEl rows]
     cwEl cw = NodeElement $! Element "col"
               (M.fromList [("min", txti $ cwMin cw), ("max", txti $ cwMax cw), ("width", txtd $ cwWidth cw)]) []
     rowEl (r, cells) = nEl "row"
-                       (ht ++ [("r", txti r), ("hidden", "false"), ("outlineLevel", "0"),
-                               ("collapsed", "false"), ("customFormat", "false"),
-                               ("customHeight", txtb hasHeight)])
+                       (M.fromList $ ht ++ [("r", txti r), ("hidden", "false"), ("outlineLevel", "0"),
+                                            ("collapsed", "false"), ("customFormat", "false"),
+                                            ("customHeight", txtb hasHeight)])
                        $ map (cellEl r) (numCols cells)
       where
         (ht, hasHeight) = case M.lookup r rh of
           Just h  -> ([("ht", txtd h)], True)
           Nothing -> ([], False)
     cellEl r (col, cell) =
-      nEl "c" (cellAttrs r col cell) [nEl "v" [] [NodeContent $ value cell] | isJust $ xlsxCellValue cell]
+      nEl "c" (M.fromList $ cellAttrs r col cell) [nEl "v" M.empty [NodeContent $ value cell] | isJust $ xlsxCellValue cell]
     cellAttrs r col cell = cellStyleAttr cell ++ [("r", T.concat [col, txti r]), ("t", cType cell)]
     cellStyleAttr XlsxCell{xlsxCellStyle=Nothing} = []
     cellStyleAttr XlsxCell{xlsxCellStyle=Just s} = [("s", txti s)]
@@ -154,10 +154,12 @@ bookXml wss = renderLBS def $ Document (Prologue [] Nothing []) root []
   where
     numNames = [(txti i, wsName ws) | (i, ws) <- zip [1..] wss]
     root = addNS "http://schemas.openxmlformats.org/spreadsheetml/2006/main" $ Element "workbook" M.empty
-           [nEl "sheets" [] $
+           [nEl "sheets" M.empty $
             map (\(n, name) -> nEl "sheet"
-                               [("name", name), ("sheetId", n), ("state", "visible"),
-                                (rId, T.concat ["rId", n])] []) numNames]
+                               (M.fromList [("name", name), ("sheetId", n), ("state", "visible"),
+                                            (rId, T.concat ["rId", n])])
+                               [])
+            numNames]
     rId = nm "http://schemas.openxmlformats.org/officeDocument/2006/relationships" "id"
 
 emptyStylesXml :: L.ByteString
@@ -169,7 +171,7 @@ ssXml ss =
   renderLBS def $ Document (Prologue [] Nothing []) root []
   where
     root = addNS "http://schemas.openxmlformats.org/spreadsheetml/2006/main" $ Element "sst" M.empty $
-           map (\s -> nEl "si" [] [nEl "t" [] [NodeContent s]]) ss
+           map (\s -> nEl "si" M.empty [nEl "t" M.empty [NodeContent s]]) ss
 
 bookRelXml :: Int -> L.ByteString
 bookRelXml n = renderLBS def $ Document (Prologue [] Nothing []) root []
@@ -181,8 +183,8 @@ bookRelXml n = renderLBS def $ Document (Prologue [] Nothing []) root []
            [relEl (n + 1) "styles.xml" "styles", relEl (n + 2) "sharedStrings.xml" "sharedStrings"]
     relEl i target typ =
       nEl "Relationship"
-      [("Id", T.concat ["rId", txti i]), ("Target", target),
-       ("Type", T.concat ["http://schemas.openxmlformats.org/officeDocument/2006/relationships/", typ])] []
+      (M.fromList [("Id", T.concat ["rId", txti i]), ("Target", target),
+                   ("Type", T.concat ["http://schemas.openxmlformats.org/officeDocument/2006/relationships/", typ])]) []
 
 rootRelXml :: L.ByteString
 rootRelXml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
@@ -193,8 +195,8 @@ contentTypesXml fds = renderLBS def $ Document (Prologue [] Nothing []) root []
   where
     root = addNS "http://schemas.openxmlformats.org/package/2006/content-types" $
            Element "Types" M.empty $
-           map (\fd -> nEl "Override" [("PartName", T.concat ["/", fdName fd]),
-                                       ("ContentType", fdContentType fd)] []) fds
+           map (\fd -> nEl "Override" (M.fromList [("PartName", T.concat ["/", fdName fd]),
+                                                   ("ContentType", fdContentType fd)]) []) fds
 
 nm :: Text -> Text -> Name
 nm ns n = Name
@@ -208,8 +210,8 @@ addNS namespace (Element (Name ln _ _) as ns) = Element (Name ln (Just namespace
     addNS' (NodeElement e) = NodeElement $ addNS namespace e
     addNS' n = n
 
-nEl :: Name -> [(Name, Text)] -> [Node] -> Node
-nEl name attrs nodes = NodeElement $ Element name (M.fromList attrs) nodes
+nEl :: Name -> M.Map Name Text -> [Node] -> Node
+nEl name attrs nodes = NodeElement $ Element name attrs nodes
 
 txti :: Int -> Text
 txti = toStrict . toLazyText . decimal
