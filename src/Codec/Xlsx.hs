@@ -70,12 +70,12 @@ data CellValue = CellText Text | CellDouble Double | CellLocalTime LocalTime
 data Cell = Cell { cellIx   :: (Text, Int)
                  , cellData :: CellData
                  }
-          deriving Show
+          deriving (Eq, Show)
 
 data CellData = CellData { cdStyle  :: Maybe Int
                          , cdValue  :: Maybe CellValue
                          }
-              deriving Show
+              deriving (Eq, Show)
 
 -- | convert column number (starting from 1) to its textual form (e.g. 3 -> "C")
 int2col :: Int -> Text

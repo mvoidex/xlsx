@@ -1,6 +1,6 @@
 Name:                xlsx
 
-Version:             0.0.2
+Version:             0.0.2.1
 
 Synopsis:            Simple and incomplete Excel file parser/writer
 Description:
@@ -19,7 +19,7 @@ Category:            Codec
 Build-type:          Simple
 
 Cabal-version:       >=1.8
-
+Tested-with:         GHC == 7.6.1
 
 Library
   Hs-source-dirs:    src
@@ -31,9 +31,9 @@ Library
     transformers >= 0.2 && < 0.4,
     bytestring   >= 0.9 && < 0.11,
     text         == 0.11.*,
-    conduit      == 0.4.*,
+    conduit      == 1.0.*,
     xml-types    == 0.3.*,
-    xml-conduit  == 0.7.*,
+    xml-conduit  == 1.1.*,
     zip-archive  == 0.1.*,
     digest       == 0.0.*,
     zlib,
@@ -49,11 +49,11 @@ Executable           test
   ghc-options:       -Wall -threaded
 
   main-is:           Test.hs
-  
+
   Build-depends:     base, containers, transformers, bytestring, text
-                    ,conduit     == 0.4.*
+                    ,conduit     == 1.0.*
                     ,xml-types   == 0.3.*
-                    ,xml-conduit == 0.7.*
+                    ,xml-conduit == 1.1.*
                     ,zip-archive == 0.1.*
                     ,digest      >  0.0.0.1
                     ,zlib
@@ -62,18 +62,26 @@ Executable           test
                     ,old-time
                     ,old-locale
                     ,filepath
-  
-test-suite data-test
-  type: exitcode-stdio-1.0
-  main-is:  DataTest.hs
-  hs-source-dirs: test/
-  Build-Depends: base, QuickCheck >= 2, HUnit,
-                 xlsx,
-                 test-framework,
-                 test-framework-hunit,
-                 test-framework-quickcheck2
+
+Test-suite          data-test
+  Type:             exitcode-stdio-1.0
+  Hs-source-dirs:   test
+  Ghc-options:      -Wall -fno-warn-unused-do-bind
+
+  Main-is:          DataTest.hs
+
+  Build-depends:    base, bytestring, containers, filepath
+                   ,QuickCheck >= 2
+                   ,HUnit
+                   ,xlsx
+                   ,temporary
+                   ,test-framework
+                   ,test-framework-hunit
+                   ,test-framework-quickcheck2
+                   ,text
+                   ,time
+
 
 source-repository head
   type:     git
   location: git://github.com/qrilka/xlsx.git
-
