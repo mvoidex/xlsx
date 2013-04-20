@@ -1,5 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TupleSections #-}
 
 module Codec.Xlsx.Parser(
@@ -35,6 +36,7 @@ import           Data.ByteString.Lazy.Char8()
 import qualified Codec.Archive.Zip as Zip
 import           Data.Conduit
 import qualified Data.Conduit.List as CL
+import           Data.Conduit.Util hiding (zip)
 import           Data.XML.Types
 import           System.FilePath
 import           Text.XML as X
@@ -175,14 +177,14 @@ convertToText (Just (CellLocalTime tm)) = T.pack $ show tm
 
 -- | Make 'Conduit' from 'mkMapRowsSink'.
 mkMapRows :: Monad m => Conduit [Cell] m MapRow
-mkMapRows = sequence mkMapRowsSink =$= CL.concatMap id
+mkMapRows = CL.sequence mkMapRowsSink =$= CL.concatMap id
 
 -- | Make 'Conduit' from 'mkCellRowsSink'
 mkDataRows :: Monad m => Conduit [Cell] m Row
-mkDataRows = sequence mkDataRowsSink =$= CL.concatMap id
+mkDataRows = CL.sequence mkDataRowsSink =$= CL.concatMap id
 
 -- | Make 'MapRow' from list of 'Cell's.
-mkMapRowsSink :: Monad m => Sink [Cell] m [MapRow]
+mkMapRowsSink :: Monad m => Consumer [Cell] m [MapRow]
 mkMapRowsSink = do
     header <- fromMaybe [] <$> CL.head
     rows   <- CL.consume
@@ -205,7 +207,7 @@ mkMapRowsSink = do
     cv _ = Nothing
 
 -- | Make 'Row' from list of 'Cell's
-mkDataRowsSink :: Monad m => Sink [Cell] m [Row]
+mkDataRowsSink :: Monad m => Consumer [Cell] m [Row]
 mkDataRowsSink = do
   header <- fromMaybe [] <$> CL.head
   rows <- CL.consume
@@ -245,7 +247,7 @@ getSheetCells (Xlsx{xlArchive=ar, xlSharedStrings=ss, xlWorksheetFiles=sheets}) 
 
 -- | Parse single cell from xml stream.
 getCell
- :: MonadThrow m => M.IntMap Text -> Sink Event m (Maybe Cell)
+ :: MonadThrow m => M.IntMap Text -> Consumer Event m (Maybe Cell)
 getCell ss = Xml.tagName (n"c") cAttrs cParser
   where
     cAttrs = do
@@ -291,7 +293,7 @@ pr x = Name
 
 
 -- | Get text from several nested tags
-tagSeq :: MonadThrow m => [Text] -> Sink Event m (Maybe Text)
+tagSeq :: MonadThrow m => [Text] -> Consumer Event m (Maybe Text)
 tagSeq (x:xs)
   = Xml.tagNoAttr (n x)
   $ foldr (\x -> Xml.force "" . Xml.tagNoAttr (n x)) Xml.content xs
@@ -358,7 +360,7 @@ parseWbRels = Xml.force "relationships required" $
       Xml.ignoreAttrs
       return (id, target)
 
----------------------------------------------------------------------
+-- ---------------------------------------------------------------------
 
 
 int :: Text -> Int
@@ -371,9 +373,11 @@ int = either error fst . T.decimal
 --
 -- FIXME: Some benchmarking required: maybe it's not very efficient to `peek`i
 -- each element twice. It's possible to swap call to `f` and `CL.peek`.
-mkXmlCond f = sequenceSink () $ const
-  $ CL.peek >>= maybe            -- try get current event form the stream
-    (return Stop)                -- stop if stream is empty
-    (\_ -> f >>= maybe           -- try consume current event
-           (CL.drop 1 >> return (Emit () [])) -- skip it if can't process
-           (return . Emit () . (:[])))        -- return result otherwise
+mkXmlCond f = self
+  where
+    self = CL.peek >>= maybe           -- try get current event form the stream
+           (return ())                 -- stop if stream is empty
+           (\_ -> yieldEvent >> self)  -- yield event and loop
+    yieldEvent = f >>= maybe           -- try consume current event
+                 (CL.drop 1)           -- skip it if can't process
+                 yield                 -- yield result otherwise
